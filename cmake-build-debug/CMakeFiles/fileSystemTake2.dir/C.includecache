@@ -1,0 +1,26 @@
+#IncludeRegexLine: ^[ 	]*[#%][ 	]*(include|import)[ 	]*[<"]([^">]+)([">])
+
+#IncludeRegexScan: ^.*$
+
+#IncludeRegexComplain: ^$
+
+#IncludeRegexTransform: 
+
+/home/sparky/Desktop/filesystemstuff/fileSystemTake2/main.c
+fuse.h
+-
+stdio.h
+-
+sys/types.h
+-
+time.h
+-
+string.h
+-
+stdlib.h
+-
+errno.h
+-
+unistd.h
+-
+

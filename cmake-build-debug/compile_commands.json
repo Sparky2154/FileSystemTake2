@@ -1,0 +1,7 @@
+[
+{
+  "directory": "/home/sparky/Desktop/filesystemstuff/fileSystemTake2/cmake-build-debug",
+  "command": "/usr/bin/cc  -I/usr/include/fuse   -D_FILE_OFFSET_BITS=64 -g -Wall --pedantic -g -O0 -D_DEBUG   -std=gnu11 -o CMakeFiles/fileSystemTake2.dir/main.c.o   -c /home/sparky/Desktop/filesystemstuff/fileSystemTake2/main.c",
+  "file": "/home/sparky/Desktop/filesystemstuff/fileSystemTake2/main.c"
+}
+]

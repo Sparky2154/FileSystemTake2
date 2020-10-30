@@ -1,0 +1,1 @@
+/usr/bin/cc  -D_FILE_OFFSET_BITS=64 -g -Wall --pedantic -g -O0 -D_DEBUG   CMakeFiles/fileSystemTake2.dir/main.c.o  -o bin/fileSystemTake2  /usr/lib/libfuse.so 
