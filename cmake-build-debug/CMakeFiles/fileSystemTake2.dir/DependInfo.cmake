@@ -4,7 +4,7 @@ set(CMAKE_DEPENDS_LANGUAGES
   )
 # The set of files for implicit dependencies of each language:
 set(CMAKE_DEPENDS_CHECK_C
-  "/home/sparky/Desktop/filesystemstuff/fileSystemTake2/main.c" "/home/sparky/Desktop/filesystemstuff/fileSystemTake2/cmake-build-debug/CMakeFiles/fileSystemTake2.dir/main.c.o"
+  "/home/sparky/Desktop/filesystemstuff/FileSystemTake2/main.c" "/home/sparky/Desktop/filesystemstuff/FileSystemTake2/cmake-build-debug/CMakeFiles/fileSystemTake2.dir/main.c.o"
   )
 set(CMAKE_C_COMPILER_ID "GNU")
 

@@ -18,93 +18,45 @@
 
 typedef struct files{
     char* name;
-    unsigned long location;
-    unsigned long content;
+    char* content;
     struct files *nextFile;
-    struct stat attr;
+    struct stat *attr;
 }Files;
 
 typedef struct directory{
     char* name;
-    unsigned long location;
     struct directory* parent;
-    unsigned long parentLocation;
     struct directory* next;
-    unsigned long nextLocation;
     struct directory* children;
-    unsigned long childrenLocation;
     Files *files;
-    unsigned long filesLocation;
-    struct stat attr;
+    struct stat *attr;
 } Directory;
 
-void readBytes(void** content, FILE** save, unsigned long *location){
-    unsigned long errorCheck = fread(content, 1, 1, *save);
-    (*location) = (*location)+1;
-    if(errorCheck != 1){
-        abort();
-    }
-}
-
 Directory root;
-char* saveState;
 
-Directory *readDirectory(unsigned long location){
-    FILE* save = fopen(saveState, "br");
-    void* content = malloc(1);
-    unsigned long currentLocation = location;
-    fsetpos(save, (fpos_t*)&location);
-
-    Directory *readingDirectory = malloc(sizeof(Directory));
-    readingDirectory->location = location;
-
-    //reading the name
-    char* name = malloc(255);
-    readBytes(content, &save, &currentLocation);
-    for (int i = 0; i < 255 && (*((char *) content)) != 0; ++i) {
-        name[i] = (*((char *) content));
-        readBytes(content, &save, &currentLocation);
-    }
-    readingDirectory->name = name;
-
-    readBytes(content, &save, &currentLocation);
-    readingDirectory->childrenLocation = (*((unsigned int*)content));
-    readBytes(content, &save, &currentLocation);
-    readingDirectory->parentLocation = (*((unsigned int*)content));
-    readBytes(content, &save, &currentLocation);
-    readingDirectory->nextLocation = (*((unsigned int*)content));
-    readBytes(content, &save, &currentLocation);
-    readingDirectory->filesLocation = (*((unsigned int*)content));
-    readBytes(content, &save, &currentLocation);
-    readingDirectory->attr = (*((struct stat*)content));
-
-    return readingDirectory;
-}
-
-Files *getFiles(unsigned long location){
-    Files *readingFiles = malloc(sizeof(Files));
-    //todo
-    return readingFiles;
-}
 
 Directory* getToFile(const char* path){
     Directory* currentDirectory = root.children;
     int pathIndex = 0;
-    int currentNameIndex;
+    int currentNameIndex = 0;
     char* currentName = malloc(255);
+
+    if(strcmp(path, "/") == 0){
+        return &root;
+    }
 
     for (int i = 1; path[i] != 0 && i < 255; ++i) {
 
         //Copying the name of the next directory to be searched
         if (path[i] == '/'){
-            currentName[i] = 0;
+            currentName[currentNameIndex] = 0;
             currentNameIndex++;
         } else if(path[i] == 0){
             free(currentName);
             return currentDirectory;
         }
         else{
-            currentName[i] = path[i];
+            currentName[currentNameIndex] = path[i];
             currentNameIndex++;
             continue;
         }
@@ -117,9 +69,6 @@ Directory* getToFile(const char* path){
             while (strcmp(currentDirectory->name, currentName) != 0){
                 if (currentDirectory->next != NULL) {
                     currentDirectory = currentDirectory->next;
-                } else if(currentDirectory->nextLocation != 1){
-                    currentDirectory->next = readDirectory(currentDirectory->nextLocation);
-                    currentDirectory = currentDirectory->next;
                 } else{
                     free(currentName);
                     return NULL;
@@ -127,9 +76,6 @@ Directory* getToFile(const char* path){
             }
 
             if(currentDirectory->children != NULL) {
-                currentDirectory = currentDirectory->children;
-            } else if(currentDirectory->childrenLocation != 1){
-                currentDirectory->children = readDirectory(currentDirectory->childrenLocation);
                 currentDirectory = currentDirectory->children;
             } else{
                 return NULL;
@@ -141,12 +87,14 @@ Directory* getToFile(const char* path){
         }
     }
     free(currentName);
-    return currentDirectory;
+    return currentDirectory->parent;
 }
 
 Files* getFile(const char* path){
-    //todo check this
-    Directory *currentDirectory = getToFile(path);
+    Directory *currentDirectory = getToFile(path)->parent;
+    if(currentDirectory == NULL || currentDirectory->files == NULL){
+        return NULL;
+    }
     Files *currentFile = currentDirectory->files;
     char *currentName = malloc(255);
     int nameIndex = 0;
@@ -173,70 +121,130 @@ Files* getFile(const char* path){
 }
 
 
-
 //Start of operations ****************************************************
 
 
-
-
-
-int fuseGetAttr( const char *path, struct stat *stateBuff ) {
-    return 0;
-}
-
-
-
-int fuseReadDir( const char *path, void *buff, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi ) {
-    filler( buff, ".", NULL, 0 ); 	// Current Directory
-	filler( buff, "..", NULL, 0 ); 	// Parent Directory
-
-	Directory* currentDirectory = getToFile(path);
-
-
-    return 0;
-}
-
-int fuseRead( const char *path, char *buff, size_t size, off_t offset, struct fuse_file_info *fi ) {
+int fuseRead (const char *path, char *buff, size_t size, off_t offset, struct fuse_file_info *fi ){
+    printf("read\n");
+    fflush(stdout);
+    Files *currentFile = getFile(path);
+    memcpy(buff, currentFile->content + offset, size);
     return 0;
 }
 
 int fuseWrite(const char *path, const char *buff, size_t size, off_t offset, struct fuse_file_info *fi) {
-    Files* file = getFile(path);
+    printf("write\n");
+    fflush(stdout);
+    Files *file = getFile(path);
+    if(file->content != NULL){
+        free(file->content);
+    }
+    char* content = malloc(size);
+    memcpy(content, buff, size);
+    file->content = content;
 
-    return size;
+    return 0;
 }
 
-int fuseMkdir(const char* path, mode_t mode){
-    getToFile(path);
+int fuseReadDir( const char *path, void *buff, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi ) {
+    printf("readDir\n");
+    fflush(stdout);
+    filler( buff, ".", NULL, 0 ); 	// Current Directory
+	filler( buff, "..", NULL, 0 ); 	// Parent Directory
+
+
+
+	Directory* currentDirectory = getToFile(path)->children;
+    Files *files = NULL;
+	if(currentDirectory->files != NULL) {
+        files = currentDirectory->files;
+    }
+
+    while (currentDirectory != NULL && currentDirectory->name != NULL && strcmp(currentDirectory->name, "") != 0){
+        filler( buff, currentDirectory->name, NULL, 0 );
+        currentDirectory = currentDirectory->next;
+    }
+
+
+    while (files != NULL && files->name != NULL){
+        filler( buff, files->name, NULL, 0 );
+        files = files->nextFile;
+    }
+
     return 0;
 }
 
 
+int fuseMkdir(const char* path, mode_t mode){
+    printf("mkdir\n");
+    fflush(stdout);
+    Directory *dir = getToFile(path);
+    Directory *parent = dir;
+
+    char* name = malloc(255);
+    int nameIndex = 0;
+
+    for (int i = 0; i < 255 && path[i] != 0; ++i) {
+        name[nameIndex] = path[i];
+        if(path[i] == '/'){
+            nameIndex = 0;
+        }
+    }
+    if(dir->children == NULL){
+        dir->children = malloc(sizeof(Directory));
+        dir = dir->children;
+    } else{
+        dir = dir->children;
+        while (dir->next != NULL){
+            dir = dir->next;
+        }
+    }
+
+    dir->parent = parent;
+    dir->name = name;
+    dir->next = NULL;
+    dir->files = NULL;
+    dir->children = NULL;
+    dir->attr = NULL;
+    return 0;
+}
+
+int fuseGetattr( const char *path, struct stat *stateBuff ) {
+    printf("fun getattr\n");
+    fflush(stdout);
+    stateBuff->st_uid = getuid();
+    stateBuff->st_gid = getgid();
+    stateBuff->st_atime = stateBuff->st_mtime = stateBuff->st_ctime = time(NULL);
+
+    Files *currentFile = getFile(path);
+
+    if ( strcmp( path, "/" ) == 0 ) { // Info For The mount point
+        stateBuff->st_mode = S_IFDIR | 0755;
+        stateBuff->st_nlink = 2;
+    }
+    else if (currentFile != NULL){ // Info For The req file
+        printf("No1");
+        stateBuff->st_mode = S_IFREG | 0644;
+        stateBuff->st_nlink = 1;
+        stateBuff->st_size = strlen(currentFile->content);
+    } else
+        return -ENOENT;
+
+    return 0;
+}
+
 //End of operations *****************************************************
 
 static struct fuse_operations operations = {
-//  .getattr	= ,
+    .getattr	= fuseGetattr,
     .readdir	= fuseReadDir,
-//  .read		= ,
+    .read		= fuseRead,
 	.write		= fuseWrite,
-//	.open		= ,
-//	.release	= ,
-//	.flush		= ,
-//	.truncate 	= ,     ???
-//	.ftruncate 	= ,     ???
 	.mkdir      = fuseMkdir,
 };
 
 int main( int argc, char *argv[] ) {
+    printf("Started\n");
 	root.name = "";
-	root.location = 0;
-	root.childrenLocation = 0;
-	root.children = readDirectory(root.childrenLocation);
-	saveState = argv[0];
-
-	char* argv2[argc-1];
-    for (int i = 1; i < argc; ++i) {
-        argv2[i-1] = argv[i];
-    }
-	return fuse_main( argc-1, argv2, &operations, NULL );
+	return fuse_main( argc, argv, &operations, NULL );
 }

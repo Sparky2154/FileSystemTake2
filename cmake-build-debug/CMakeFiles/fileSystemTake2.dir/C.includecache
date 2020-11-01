@@ -6,7 +6,7 @@
 
 #IncludeRegexTransform: 
 
-/home/sparky/Desktop/filesystemstuff/fileSystemTake2/main.c
+/home/sparky/Desktop/filesystemstuff/FileSystemTake2/main.c
 fuse.h
 -
 stdio.h
@@ -23,4 +23,42 @@ errno.h
 -
 unistd.h
 -
+
+/usr/include/fuse/fuse.h
+fuse_common.h
+/usr/include/fuse/fuse_common.h
+fcntl.h
+-
+time.h
+-
+utime.h
+-
+sys/types.h
+-
+sys/stat.h
+-
+sys/statvfs.h
+-
+sys/uio.h
+-
+fuse_compat.h
+/usr/include/fuse/fuse_compat.h
+
+/usr/include/fuse/fuse_common.h
+fuse_opt.h
+/usr/include/fuse/fuse_opt.h
+stdint.h
+-
+sys/types.h
+-
+fuse_common_compat.h
+/usr/include/fuse/fuse_common_compat.h
+
+/usr/include/fuse/fuse_common_compat.h
+
+/usr/include/fuse/fuse_compat.h
+sys/statfs.h
+-
+
+/usr/include/fuse/fuse_opt.h
 
