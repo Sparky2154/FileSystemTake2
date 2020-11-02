@@ -24,13 +24,12 @@ struct fileDescriptor;
 
 typedef struct files{
     char* content;
-    struct stat *attr;
+    unsigned int length;
 }Files;
 
 typedef struct directory{
     struct fileDescriptor *files;
     struct fileDescriptor *parent;
-    struct stat *attr;
 } Directory;
 
 typedef struct fileDescriptor{
@@ -43,12 +42,12 @@ typedef struct fileDescriptor{
 }FileDescriptor;
 
 
-Directory root;
+FileDescriptor root;
 struct stat defaultStat;
 
 
 Directory *getToFile(const char* path){
-    FileDescriptor *currentFD = root.files;
+    FileDescriptor *currentFD = root.directory->files;
     int currentNameIndex = 0;
     char currentName[255];
 
@@ -126,7 +125,9 @@ char* getName(const char* path){
 
 FileDescriptor *getFD(const char* path){
     FileDescriptor *currentFD = getToFile(path)->files;
-
+    if (strcmp(path, "/") == 0){
+        return &root;
+    }
     if(currentFD == NULL){
         return NULL;
     }
@@ -236,8 +237,23 @@ int fuseGetattr( const char *path, struct stat *stateBuff ) {
     stateBuff->st_uid = getuid();
     stateBuff->st_gid = getgid();
 
+    FileDescriptor *fd = getFD(path);
+    if (fd == NULL){
+        stateBuff->st_nlink = 0;
+        stateBuff->st_mode = 777;
+        return 0;
+    }
 
 
+
+    if (fd->type == directory){
+        stateBuff->st_mode = S_IFDIR | 0755;
+        stateBuff->st_nlink = 2;
+    } else if(fd->type == file){
+        stateBuff->st_mode = S_IFREG | 0644;
+        stateBuff->st_nlink = 1;
+        stateBuff->st_size = fd->file->length;
+    }
 
     return 0;
 }
@@ -251,7 +267,7 @@ int fuseOpen (const char *path, struct fuse_file_info *fi){
 int fuseCreate (const char *path, mode_t mode, struct fuse_file_info *fi){
     printf("fuseCreate %s\n", path);
     fflush(stdout);
-    Directory *currentDirectory = getFD(path)->directory;
+    Directory *currentDirectory = getToFile(path);
     FileDescriptor *currentFD;
 
     if (currentDirectory == NULL){
@@ -269,14 +285,13 @@ int fuseCreate (const char *path, mode_t mode, struct fuse_file_info *fi){
     }
 
     Files* currentFile = malloc(sizeof(Files));
-    currentFile->attr = NULL;
     currentFile->content = NULL;
     currentFD->file = currentFile;
     currentFD->name = getName(path);
+    currentFD->type = file;
     currentFD->next = NULL;
     currentFile->content = NULL;
 
-    struct stat *attr = malloc(sizeof(struct stat));
 
     return 0;
 }
@@ -295,5 +310,16 @@ static struct fuse_operations operations = {
 
 int main( int argc, char *argv[] ) {
     printf("Started\n");
-	return fuse_main( argc, argv, &operations, NULL );
+    root.directory = malloc(sizeof(Directory));
+    root.directory->files = NULL;
+    root.directory->parent = &root;
+    root.type = directory;
+    mode_t mode;
+    fuseCreate("/bla", mode, malloc(sizeof(struct fuse_file_info)));
+
+    int ret = fuse_main( argc, argv, &operations, NULL );
+
+    sleep(30);
+
+	return ret;
 }
