@@ -15,45 +15,60 @@
 //Notice: I used the following filesystem as a template at first and modified it to fit my needs.
 // https://github.com/osxfuse/fuse
 
+typedef enum fileType{
+    directory,
+    file
+}FileType;
+
+struct fileDescriptor;
 
 typedef struct files{
-    char* name;
     char* content;
-    struct files *nextFile;
     struct stat *attr;
 }Files;
 
 typedef struct directory{
-    char* name;
-    struct directory* parent;
-    struct directory* next;
-    struct directory* children;
-    Files *files;
+    struct fileDescriptor *files;
+    struct fileDescriptor *parent;
     struct stat *attr;
 } Directory;
+
+typedef struct fileDescriptor{
+    FileType type;
+    char* name;
+    Files *file;
+    Directory *directory;
+    struct fileDescriptor *next;
+    Directory *parent;
+}FileDescriptor;
+
 
 Directory root;
 
 
-Directory* getToFile(const char* path){
-    Directory* currentDirectory = root.children;
-    int pathIndex = 0;
+Directory *getToFile(const char* path){
+    FileDescriptor *currentFD = root.files;
     int currentNameIndex = 0;
-    char* currentName = malloc(255);
+    char currentName[255];
+
+    if (currentFD == NULL){
+        return &root;
+    }
 
     if(strcmp(path, "/") == 0){
         return &root;
     }
 
-    for (int i = 1; path[i] != 0 && i < 255; ++i) {
+    for (int i = 1; i < 255; ++i) {
 
         //Copying the name of the next directory to be searched
         if (path[i] == '/'){
             currentName[currentNameIndex] = 0;
-            currentNameIndex++;
         } else if(path[i] == 0){
-            free(currentName);
-            return currentDirectory;
+            if (currentFD == NULL){
+                return NULL;
+            }
+            return currentFD->parent;
         }
         else{
             currentName[currentNameIndex] = path[i];
@@ -66,74 +81,90 @@ Directory* getToFile(const char* path){
             currentNameIndex = 0;
 
             //Iterate through the directories
-            while (strcmp(currentDirectory->name, currentName) != 0){
-                if (currentDirectory->next != NULL) {
-                    currentDirectory = currentDirectory->next;
+            while (strcmp(currentFD->name, currentName) != 0){
+                if (currentFD->next != NULL) {
+                    currentFD = currentFD->next;
                 } else{
-                    free(currentName);
                     return NULL;
                 }
             }
 
-            if(currentDirectory->children != NULL) {
-                currentDirectory = currentDirectory->children;
+            //Go into the directory found
+            if(currentFD->type == directory && currentFD->directory != NULL) {
+                currentFD = currentFD->directory->files;
             } else{
                 return NULL;
             }
-
         } else{
-            free(currentName);
             return NULL;
         }
     }
-    free(currentName);
-    return currentDirectory->parent;
-}
 
-Files* getFile(const char* path){
-    Directory *currentDirectory = getToFile(path)->parent;
-    if(currentDirectory == NULL || currentDirectory->files == NULL){
+    if (currentFD == NULL){
         return NULL;
     }
-    Files *currentFile = currentDirectory->files;
+
+    return currentFD->directory;
+}
+
+char* getName(const char* path){
     char *currentName = malloc(255);
     int nameIndex = 0;
-    int pathIndex = 0;
 
-    while (nameIndex < 255 && currentName[nameIndex] != 0){
-        if(currentName[nameIndex] == '/'){
+    for (int pathIndex = 0; nameIndex < 255 && path[pathIndex] != 0; pathIndex++){
+        if(path[pathIndex] == '/'){
             nameIndex = 0;
         } else{
             currentName[nameIndex] = path[pathIndex];
             nameIndex++;
         }
-        pathIndex++;
     }
     currentName[nameIndex] = 0;
+    return currentName;
+}
+
+Files* getFile(const char* path){
+    Directory *currentDirectory = getToFile(path);
+
+    if(currentDirectory == NULL || currentDirectory->files == NULL){
+        return NULL;
+    }
+
+    FileDescriptor *currentFile = currentDirectory->files;
+    char *currentName = getName(path);
 
     while (strcmp(currentFile->name, currentName) != 0){
-        if (currentFile->nextFile == NULL)
+        if (currentFile->next == NULL) {
+            free(currentName);
             return NULL;
-        currentFile = currentFile->nextFile;
+        }
+        currentFile = currentFile->next;
     }
     free(currentName);
-    return currentFile;
+    return currentFile->file;
 }
 
 
 //Start of operations ****************************************************
 
 
+
 int fuseRead (const char *path, char *buff, size_t size, off_t offset, struct fuse_file_info *fi ){
-    printf("read\n");
+    printf("read %s\n", path);
     fflush(stdout);
     Files *currentFile = getFile(path);
+    if (currentFile == NULL){
+        return 1;
+    }
+    if(currentFile->content == NULL){
+        return 0;
+    }
     memcpy(buff, currentFile->content + offset, size);
     return 0;
 }
 
 int fuseWrite(const char *path, const char *buff, size_t size, off_t offset, struct fuse_file_info *fi) {
-    printf("write\n");
+    printf("write %s\n", path);
     fflush(stdout);
     Files *file = getFile(path);
     if(file->content != NULL){
@@ -147,28 +178,29 @@ int fuseWrite(const char *path, const char *buff, size_t size, off_t offset, str
 }
 
 int fuseReadDir( const char *path, void *buff, fuse_fill_dir_t filler, off_t offset, struct fuse_file_info *fi ) {
-    printf("readDir\n");
+    printf("readDir %s\n", path);
     fflush(stdout);
     filler( buff, ".", NULL, 0 ); 	// Current Directory
 	filler( buff, "..", NULL, 0 ); 	// Parent Directory
 
 
 
-	Directory* currentDirectory = getToFile(path)->children;
-    Files *files = NULL;
-	if(currentDirectory->files != NULL) {
-        files = currentDirectory->files;
-    }
+	FileDescriptor *currentFile = getToFile(path)->files;
 
-    while (currentDirectory != NULL && currentDirectory->name != NULL && strcmp(currentDirectory->name, "") != 0){
-        filler( buff, currentDirectory->name, NULL, 0 );
-        currentDirectory = currentDirectory->next;
-    }
+	if (currentFile == NULL){
+        return 0;
+	}
 
+    Files *files;
+	if(currentFile->directory != NULL) {
+        files = currentFile->directory;
+    } else{
+        return 0;
+	}
 
-    while (files != NULL && files->name != NULL){
-        filler( buff, files->name, NULL, 0 );
-        files = files->nextFile;
+    while (currentFile != NULL && currentFile->name != NULL){
+        filler(buff, currentFile->name, NULL, 0 );
+        currentFile = currentFile->next;
     }
 
     return 0;
@@ -176,59 +208,81 @@ int fuseReadDir( const char *path, void *buff, fuse_fill_dir_t filler, off_t off
 
 
 int fuseMkdir(const char* path, mode_t mode){
-    printf("mkdir\n");
+    printf("mkdir %s\n", path);
     fflush(stdout);
     Directory *dir = getToFile(path);
-    Directory *parent = dir;
+    FileDescriptor *currentFD;
 
-    char* name = malloc(255);
-    int nameIndex = 0;
+    char* name = getName(path);
 
-    for (int i = 0; i < 255 && path[i] != 0; ++i) {
-        name[nameIndex] = path[i];
-        if(path[i] == '/'){
-            nameIndex = 0;
-        }
-    }
-    if(dir->children == NULL){
-        dir->children = malloc(sizeof(Directory));
-        dir = dir->children;
+    if (dir->files == NULL){
+        dir->files = malloc(sizeof(FileDescriptor));
+        currentFD = dir->files;
     } else{
-        dir = dir->children;
-        while (dir->next != NULL){
-            dir = dir->next;
+        currentFD = dir->files;
+        while (currentFD->next != NULL){
+            currentFD = currentFD->next;
         }
+        currentFD->next = malloc(sizeof(FileDescriptor));
+        currentFD = currentFD->next;
     }
 
-    dir->parent = parent;
-    dir->name = name;
-    dir->next = NULL;
-    dir->files = NULL;
-    dir->children = NULL;
-    dir->attr = NULL;
+    currentFD->name = name;
+    currentFD->parent = dir;
+    currentFD->type = directory;
+    currentFD->directory = NULL;
+    currentFD->file = NULL;
+    currentFD->next = NULL;
+
     return 0;
 }
 
 int fuseGetattr( const char *path, struct stat *stateBuff ) {
-    printf("fun getattr\n");
+    printf("fun getattr %s\n", path);
     fflush(stdout);
+
     stateBuff->st_uid = getuid();
     stateBuff->st_gid = getgid();
-    stateBuff->st_atime = stateBuff->st_mtime = stateBuff->st_ctime = time(NULL);
 
-    Files *currentFile = getFile(path);
 
-    if ( strcmp( path, "/" ) == 0 ) { // Info For The mount point
-        stateBuff->st_mode = S_IFDIR | 0755;
-        stateBuff->st_nlink = 2;
+
+    return 0;
+}
+
+int fuseOpen (const char *path, struct fuse_file_info *fi){
+    printf("fuseOpen %s\n", path);
+    fflush(stdout);
+    return 0;
+}
+
+int fuseCreate (const char *path, mode_t mode, struct fuse_file_info *fi){
+    printf("fuseCreate %s\n", path);
+    fflush(stdout);
+    Directory *currentDirectory = getToFile(path);
+    FileDescriptor *currentFD;
+
+    if (currentDirectory == NULL){
+        return 1;
     }
-    else if (currentFile != NULL){ // Info For The req file
-        printf("No1");
-        stateBuff->st_mode = S_IFREG | 0644;
-        stateBuff->st_nlink = 1;
-        stateBuff->st_size = strlen(currentFile->content);
-    } else
-        return -ENOENT;
+    if (currentDirectory->files == NULL){
+        currentDirectory->files = malloc(sizeof(Files));
+        currentFD = currentDirectory->files;
+    } else{
+        currentFD = currentDirectory->files;
+        while (currentFD->next != NULL){
+            currentFD = currentFD->next;
+        }
+    }
+
+    Files* currentFile = malloc(sizeof(Files));
+    currentFile->attr = NULL;
+    currentFile->content = NULL;
+    currentFD->file = currentFile;
+    currentFD->name = getName(path);
+    currentFD->next = NULL;
+    currentFile->content = NULL;
+
+    struct stat *attr = malloc(sizeof(struct stat));
 
     return 0;
 }
@@ -241,10 +295,11 @@ static struct fuse_operations operations = {
     .read		= fuseRead,
 	.write		= fuseWrite,
 	.mkdir      = fuseMkdir,
+	.open       = fuseOpen,
+	.create     = fuseCreate,
 };
 
 int main( int argc, char *argv[] ) {
     printf("Started\n");
-	root.name = "";
 	return fuse_main( argc, argv, &operations, NULL );
 }
