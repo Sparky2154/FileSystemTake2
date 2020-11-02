@@ -44,6 +44,7 @@ typedef struct fileDescriptor{
 
 
 Directory root;
+struct stat defaultStat;
 
 
 Directory *getToFile(const char* path){
@@ -123,25 +124,24 @@ char* getName(const char* path){
     return currentName;
 }
 
-Files* getFile(const char* path){
-    Directory *currentDirectory = getToFile(path);
+FileDescriptor *getFD(const char* path){
+    FileDescriptor *currentFD = getToFile(path)->files;
 
-    if(currentDirectory == NULL || currentDirectory->files == NULL){
+    if(currentFD == NULL){
         return NULL;
     }
 
-    FileDescriptor *currentFile = currentDirectory->files;
     char *currentName = getName(path);
-
-    while (strcmp(currentFile->name, currentName) != 0){
-        if (currentFile->next == NULL) {
+    while (strcmp(currentFD->name, currentName) != 0){
+        if (currentFD->next == NULL) {
             free(currentName);
             return NULL;
         }
-        currentFile = currentFile->next;
+        currentFD = currentFD->next;
     }
+
     free(currentName);
-    return currentFile->file;
+    return currentFD;
 }
 
 
@@ -152,7 +152,7 @@ Files* getFile(const char* path){
 int fuseRead (const char *path, char *buff, size_t size, off_t offset, struct fuse_file_info *fi ){
     printf("read %s\n", path);
     fflush(stdout);
-    Files *currentFile = getFile(path);
+    Files *currentFile = getFD(path)->file;
     if (currentFile == NULL){
         return 1;
     }
@@ -166,7 +166,7 @@ int fuseRead (const char *path, char *buff, size_t size, off_t offset, struct fu
 int fuseWrite(const char *path, const char *buff, size_t size, off_t offset, struct fuse_file_info *fi) {
     printf("write %s\n", path);
     fflush(stdout);
-    Files *file = getFile(path);
+    Files *file = getFD(path)->file;
     if(file->content != NULL){
         free(file->content);
     }
@@ -183,18 +183,9 @@ int fuseReadDir( const char *path, void *buff, fuse_fill_dir_t filler, off_t off
     filler( buff, ".", NULL, 0 ); 	// Current Directory
 	filler( buff, "..", NULL, 0 ); 	// Parent Directory
 
-
-
-	FileDescriptor *currentFile = getToFile(path)->files;
+	FileDescriptor *currentFile = getFD(path);
 
 	if (currentFile == NULL){
-        return 0;
-	}
-
-    Files *files;
-	if(currentFile->directory != NULL) {
-        files = currentFile->directory;
-    } else{
         return 0;
 	}
 
@@ -241,8 +232,10 @@ int fuseGetattr( const char *path, struct stat *stateBuff ) {
     printf("fun getattr %s\n", path);
     fflush(stdout);
 
+    stateBuff->st_atime = stateBuff->st_mtime = stateBuff->st_ctime = time(NULL);
     stateBuff->st_uid = getuid();
     stateBuff->st_gid = getgid();
+
 
 
 
@@ -258,12 +251,13 @@ int fuseOpen (const char *path, struct fuse_file_info *fi){
 int fuseCreate (const char *path, mode_t mode, struct fuse_file_info *fi){
     printf("fuseCreate %s\n", path);
     fflush(stdout);
-    Directory *currentDirectory = getToFile(path);
+    Directory *currentDirectory = getFD(path)->directory;
     FileDescriptor *currentFD;
 
     if (currentDirectory == NULL){
         return 1;
     }
+
     if (currentDirectory->files == NULL){
         currentDirectory->files = malloc(sizeof(Files));
         currentFD = currentDirectory->files;
